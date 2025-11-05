@@ -6,30 +6,30 @@ import 'package:monitoreo_movil/features/llm/data/llm_remote.dart';
 import 'package:monitoreo_movil/features/signos/data/signos_remote.dart';
 import 'package:monitoreo_movil/features/paciente/domain/entities.dart';
 
-/// Opciones predefinidas para adultos mayores (sin escribir)
-const _opciones = <String>[
-  'Revisión general',
-  '¿Hay algo preocupante?',
-  'Qué vigilar',
-  'Hábitos y cuidados',
-];
+const _opcionUnica = 'Revisión general';
 
-/// Ventanas fijas 7 / 15 / 30 días
+const _tipoMap = {
+  _opcionUnica: 'general',
+};
+
 enum _Ventana { d7, d15, d30 }
 
 extension _VentanaX on _Ventana {
   int get dias {
     switch (this) {
-      case _Ventana.d7: return 7;
-      case _Ventana.d15: return 15;
-      case _Ventana.d30: return 30;
+      case _Ventana.d7:
+        return 7;
+      case _Ventana.d15:
+        return 15;
+      case _Ventana.d30:
+        return 30;
     }
   }
+
   String get label => '$dias días';
   Duration get duration => Duration(days: dias);
 }
 
-/// Proveedor de signos (para armar el prompt internamente)
 final _misSignosProvider = FutureProvider<List<Signo>>((ref) async {
   final dio = ref.read(dioProvider);
   return SignosRemote(dio).listarMisSignos();
@@ -45,16 +45,30 @@ class RecomendacionScreen extends ConsumerStatefulWidget {
 class _RecomendacionScreenState extends ConsumerState<RecomendacionScreen> {
   final _controller = ScrollController();
 
-  _Ventana _ventana = _Ventana.d30; // por defecto 30 días
+  _Ventana _ventana = _Ventana.d30;
   bool _enviando = false;
   bool _typing = false;
 
-  final List<_Msg> _mensajes = []; // chat history
+  final List<_Msg> _mensajes = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _warmUpLlm();
+  }
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _warmUpLlm() async {
+    try {
+      final dio = ref.read(dioProvider);
+      final llm = LlmRemote(dio);
+      await llm.estado();
+    } catch (_) {}
   }
 
   Future<void> _scrollBottom() async {
@@ -72,43 +86,36 @@ class _RecomendacionScreenState extends ConsumerState<RecomendacionScreen> {
     if (_enviando) return;
     setState(() => _enviando = true);
 
-    // 1) Muestra burbuja del "usuario"
     _mensajes.add(_Msg.user(opcion));
     setState(() {});
     await _scrollBottom();
 
-    // 2) Muestra indicador "escribiendo…"
     _typing = true;
     setState(() {});
     await _scrollBottom();
 
     try {
-      // 3) Trae signos (no se muestran al paciente)
+      await _warmUpLlm();
+
       final signos = await ref.read(_misSignosProvider.future);
 
-      // 4) Filtra por ventana y prioriza 1 por día (máx N días)
       final ahora = DateTime.now();
-      final enVentana = signos
-          .where((s) => ahora.difference(s.fecha) <= _ventana.duration)
-          .toList()
+      final enVentana = signos.where((s) => ahora.difference(s.fecha) <= _ventana.duration).toList()
         ..sort((a, b) => b.fecha.compareTo(a.fecha));
 
-      final porDia = <String, Signo>{}; // yyyy-mm-dd -> Signo más reciente de ese día
+      final porDia = <String, Signo>{};
       for (final s in enVentana) {
-        final key = '${s.fecha.year.toString().padLeft(4, '0')}-'
-            '${s.fecha.month.toString().padLeft(2, '0')}-'
-            '${s.fecha.day.toString().padLeft(2, '0')}';
+        final key =
+            '${s.fecha.year.toString().padLeft(4, '0')}-${s.fecha.month.toString().padLeft(2, '0')}-${s.fecha.day.toString().padLeft(2, '0')}';
         porDia.putIfAbsent(key, () => s);
         if (porDia.length >= _ventana.dias) break;
       }
-      final seleccion = porDia.entries.toList()
-        ..sort((a, b) => b.value.fecha.compareTo(a.value.fecha));
+      final seleccion = porDia.entries.toList()..sort((a, b) => b.value.fecha.compareTo(a.value.fecha));
 
-      // 5) Construye prompt “behind the scenes” (no se muestra)
       final buffer = StringBuffer();
       for (final e in seleccion) {
         final s = e.value;
-        final f = e.key; // yyyy-mm-dd
+        final f = e.key;
         buffer.writeln('- ${s.tipo.replaceAll("_", " ")}: ${s.valor} (fecha: $f)');
       }
 
@@ -130,12 +137,11 @@ Formato de salida:
 3) Señales de alarma (si aplica)
 ''';
 
-      // 6) Llamada al backend LLM
       final dio = ref.read(dioProvider);
       final llm = LlmRemote(dio);
-      final texto = await llm.recomendacion(prompt);
+      final tipo = _tipoMap[opcion] ?? 'general';
+      final texto = await llm.recomendacion(prompt, tipo: tipo, fast: true);
 
-      // 7) Reemplaza typing y añade respuesta del asistente
       _typing = false;
       _mensajes.add(_Msg.assistant(texto, suffix: ' — ${_ventana.label}'));
       setState(() {});
@@ -158,20 +164,19 @@ Formato de salida:
     return SafeArea(
       child: Column(
         children: [
-          // Encabezado
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Row(
               children: const [
                 Expanded(
-                  child: Text('Consejos de salud (IA)',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                  child: Text(
+                    'Consejos de salud (IA)',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                  ),
                 ),
               ],
             ),
           ),
-
-          // Línea de estado de carga de signos (no muestra datos)
           signosAsync.maybeWhen(
             loading: () => const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -179,8 +184,6 @@ Formato de salida:
             ),
             orElse: () => const SizedBox(height: 8),
           ),
-
-          // Segmento de 7/15/30 días
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: SegmentedButton<_Ventana>(
@@ -193,8 +196,6 @@ Formato de salida:
               onSelectionChanged: (s) => setState(() => _ventana = s.first),
             ),
           ),
-
-          // Chat (historial)
           Expanded(
             child: ListView.builder(
               controller: _controller,
@@ -209,29 +210,28 @@ Formato de salida:
               },
             ),
           ),
-
           const Divider(height: 1),
-
-          // Botones de opciones grandes (quick replies)
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
-              children: _opciones.map((op) {
-                return SizedBox(
-                  height: 44,
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
+            child: Align(
+              alignment: Alignment.center,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 200, maxWidth: 260),
+                child: SizedBox(
+                  height: 48,
                   child: ElevatedButton(
-                    onPressed: _enviando ? null : () => _enviarOpcion(op),
+                    onPressed: _enviando ? null : () => _enviarOpcion(_opcionUnica),
                     style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                     ),
-                    child: Text(op, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
+                    child: const Text(
+                      _opcionUnica,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    ),
                   ),
-                );
-              }).toList(),
+                ),
+              ),
             ),
           ),
         ],
@@ -240,13 +240,11 @@ Formato de salida:
   }
 }
 
-/// ====== MODELOS Y WIDGETS DE CHAT ======
-
 class _Msg {
-  final bool isUser;         // true = paciente (burbuja derecha)
-  final String text;         // contenido visible
-  final DateTime at;         // tiempo
-  final String? suffix;      // opcional: " — 30 días" etc.
+  final bool isUser;
+  final String text;
+  final DateTime at;
+  final String? suffix;
 
   _Msg._(this.isUser, this.text, this.at, {this.suffix});
 
@@ -368,8 +366,11 @@ class _TypingBubbleState extends State<_TypingBubble> with SingleTickerProviderS
   Widget _dot(double opacity) {
     return Opacity(
       opacity: opacity,
-      child: Container(width: 8, height: 8, decoration: const BoxDecoration(
-          color: Colors.black38, shape: BoxShape.circle)),
+      child: Container(
+        width: 8,
+        height: 8,
+        decoration: const BoxDecoration(color: Colors.black38, shape: BoxShape.circle),
+      ),
     );
   }
 }
