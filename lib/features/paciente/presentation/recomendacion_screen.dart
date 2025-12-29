@@ -159,15 +159,26 @@ Prioridad: [ALTA 🔴 / MEDIA 🟡 / BAJA 🟢]
       final dio = ref.read(dioProvider);
       final llm = LlmRemote(dio);
       final tipo = _tipoMap[opcion] ?? 'general';
+      
+      debugPrint('📡 Llamando a IA con ${buffer.length} signos...');
       final texto = await llm.recomendacion(prompt, tipo: tipo, fast: true);
+      debugPrint('✅ Respuesta IA recibida: ${texto.substring(0, texto.length > 50 ? 50 : texto.length)}...');
 
       _typing = false;
       _mensajes.add(_Msg.assistant(texto, suffix: ' — ${_ventana.label}'));
       setState(() {});
       await _scrollBottom();
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('❌ Error IA: $e');
+      debugPrint('Stack: $stack');
       _typing = false;
-      _mensajes.add(_Msg.assistant('No se pudo obtener una recomendación en este momento.'));
+      // Mostrar error real para debugging
+      final errorMsg = e.toString().contains('SocketException') 
+          ? 'Error de conexión. Verifica tu internet.'
+          : e.toString().contains('TimeoutException')
+              ? 'La IA tardó demasiado en responder. Intenta de nuevo.'
+              : 'Error al obtener recomendación: ${e.toString().substring(0, e.toString().length > 100 ? 100 : e.toString().length)}';
+      _mensajes.add(_Msg.assistant(errorMsg));
       setState(() {});
       await _scrollBottom();
     } finally {
