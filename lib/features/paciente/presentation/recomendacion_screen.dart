@@ -116,7 +116,10 @@ class _RecomendacionScreenState extends ConsumerState<RecomendacionScreen> {
       for (final e in seleccion) {
         final s = e.value;
         final f = e.key;
-        buffer.writeln('- ${s.tipo.replaceAll("_", " ")}: ${s.valor} (fecha: $f)');
+        // Formatear con nombres y unidades que el backend pueda parsear
+        final nombreTipo = _formatearTipoSigno(s.tipo);
+        final valorConUnidad = _formatearValorConUnidad(s.tipo, s.valor);
+        buffer.writeln('- $nombreTipo: $valorConUnidad (fecha: $f)');
       }
 
       final prompt = '''
@@ -267,6 +270,45 @@ Prioridad: [ALTA 🔴 / MEDIA 🟡 / BAJA 🟢]
         ],
       ),
     );
+  }
+}
+
+/// Mapea el tipo interno a nombre legible con acentos
+String _formatearTipoSigno(String tipo) {
+  const mapa = {
+    'presion_arterial': 'Presión arterial',
+    'frecuencia_cardiaca': 'Frecuencia cardíaca',
+    'temperatura': 'Temperatura',
+    'saturacion_oxigeno': 'Saturación de oxígeno',
+    'glucosa': 'Glucosa',
+    'peso': 'Peso',
+    'frecuencia_respiratoria': 'Frecuencia respiratoria',
+  };
+  return mapa[tipo.toLowerCase()] ?? tipo.replaceAll('_', ' ');
+}
+
+/// Agrega unidades al valor según el tipo de signo
+String _formatearValorConUnidad(String tipo, String valor) {
+  switch (tipo.toLowerCase()) {
+    case 'presion_arterial':
+      return '$valor mmHg';
+    case 'frecuencia_cardiaca':
+      return '$valor lpm';
+    case 'frecuencia_respiratoria':
+      return '$valor rpm';
+    case 'temperatura':
+      // Verificar si ya tiene unidad
+      if (valor.contains('°') || valor.contains('C')) return valor;
+      return '$valor °C';
+    case 'saturacion_oxigeno':
+      if (valor.contains('%')) return valor;
+      return '$valor%';
+    case 'glucosa':
+      return '$valor mg/dL';
+    case 'peso':
+      return '$valor kg';
+    default:
+      return valor;
   }
 }
 
