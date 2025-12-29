@@ -38,14 +38,11 @@ android {
             isMinifyEnabled = false
             isShrinkResources = false
         }
-        // ✅ Release con R8 + shrink (opcional)
+        // Release sin R8 (para usar con debug key)
         getByName("release") {
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 }

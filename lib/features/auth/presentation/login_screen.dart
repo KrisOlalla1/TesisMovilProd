@@ -17,6 +17,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _storage = const FlutterSecureStorage();
   bool _loading = false;
   String? _error;
+  bool _obscureText = true;
 
   @override
   Widget build(BuildContext context) {
@@ -65,11 +66,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       const SizedBox(height: 16),
                       TextField(
                         controller: _pwd,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Contraseña',
-                          prefixIcon: Icon(Icons.lock),
+                          prefixIcon: const Icon(Icons.lock),
+                          suffixIcon: IconButton(
+                            icon: Icon(_obscureText ? Icons.visibility_off : Icons.visibility),
+                            onPressed: () => setState(() => _obscureText = !_obscureText),
+                          ),
                         ),
-                        obscureText: true,
+                        obscureText: _obscureText,
                       ),
                       const SizedBox(height: 24),
                       if (_error != null)

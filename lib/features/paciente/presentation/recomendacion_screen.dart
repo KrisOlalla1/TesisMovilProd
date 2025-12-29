@@ -120,21 +120,40 @@ class _RecomendacionScreenState extends ConsumerState<RecomendacionScreen> {
       }
 
       final prompt = '''
-Eres un asistente clínico. Habla con lenguaje muy claro y amable para adultos mayores.
-Analiza los signos vitales recientes y ofrece recomendaciones prácticas y seguras.
-Evita diagnósticos definitivos. Indica cuándo consultar al médico y hábitos saludables.
+Eres un asistente clínico especializado en análisis de signos vitales. Habla con lenguaje claro y amable.
 
-Ventana analizada: últimos ${_ventana.dias} días (máximo 1 registro por día, hasta ${_ventana.dias} en total).
-Signos del paciente (no mostrar al usuario):
-${buffer.isEmpty ? '(sin signos en la ventana seleccionada)' : buffer.toString()}
+RANGOS NORMALES DE REFERENCIA (adultos):
+- Presión arterial: 90/60 - 120/80 mmHg (ALERTA si >140/90 o <90/60)
+- Frecuencia cardíaca: 60 - 100 lpm (ALERTA si >100 o <50)
+- Temperatura: 36.1 - 37.2 °C (ALERTA si >38 o <35.5)
+- Saturación oxígeno: 95 - 100% (ALERTA si <92%)
+- Glucosa en ayunas: 70 - 100 mg/dL (ALERTA si >126 o <70)
+- Peso: Evaluar tendencia (ALERTA si cambio >3kg en una semana)
 
-Preferencia del paciente:
-$opcion
+INSTRUCCIONES:
+1. PRIMERO analiza cada signo vital y compáralo con los rangos normales
+2. Si hay valores FUERA de rango normal, DEBES alertar claramente con "⚠️ ATENCIÓN:"
+3. Categoriza la prioridad: ALTA (consultar médico urgente), MEDIA (vigilar), BAJA (todo normal)
+4. Si los signos son anómalos, da recomendaciones específicas para cada anomalía
 
-Formato de salida:
-1) Resumen claro
-2) Recomendaciones (pasos concretos y fáciles)
-3) Señales de alarma (si aplica)
+Ventana analizada: últimos ${_ventana.dias} días.
+Signos del paciente a analizar:
+${buffer.isEmpty ? '(sin signos registrados en este período)' : buffer.toString()}
+
+Solicitud del paciente: $opcion
+
+FORMATO DE RESPUESTA OBLIGATORIO:
+🏥 Recomendación médica — $opcion
+Prioridad: [ALTA 🔴 / MEDIA 🟡 / BAJA 🟢]
+
+[Si hay anomalías, empezar con:]
+⚠️ ATENCIÓN: [describir valores anómalos detectados]
+
+[Resumen del análisis]
+
+[Recomendaciones específicas numeradas]
+
+[Cuándo consultar al médico]
 ''';
 
       final dio = ref.read(dioProvider);
