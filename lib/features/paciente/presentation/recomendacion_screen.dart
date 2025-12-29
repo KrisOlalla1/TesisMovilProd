@@ -116,10 +116,10 @@ class _RecomendacionScreenState extends ConsumerState<RecomendacionScreen> {
       for (final e in seleccion) {
         final s = e.value;
         final f = e.key;
-        // Formatear con nombres y unidades que el backend pueda parsear
+        // Formatear con nombres y unidades que el backend pueda parsear (SIN FECHAS)
         final nombreTipo = _formatearTipoSigno(s.tipo);
         final valorConUnidad = _formatearValorConUnidad(s.tipo, s.valor);
-        buffer.writeln('- $nombreTipo: $valorConUnidad (fecha: $f)');
+        buffer.writeln('- $nombreTipo: $valorConUnidad');
       }
 
       final prompt = '''
@@ -279,7 +279,7 @@ String _formatearTipoSigno(String tipo) {
     'presion_arterial': 'Presión arterial',
     'frecuencia_cardiaca': 'Frecuencia cardíaca',
     'temperatura': 'Temperatura',
-    'saturacion_oxigeno': 'Saturación de oxígeno',
+    'saturacion_oxigeno': 'Saturación oxígeno',
     'glucosa': 'Glucosa',
     'peso': 'Peso',
     'frecuencia_respiratoria': 'Frecuencia respiratoria',
