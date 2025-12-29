@@ -1,4 +1,4 @@
 
-const kBaseUrl = 'http://10.0.2.2:5000'; // Emulador Android
+const kBaseUrl = 'https://tesis-backend-170896327116.us-central1.run.app'; // Cloud Run Production
 const kAuthHeader = 'Authorization';
 const kBearer = 'Bearer';

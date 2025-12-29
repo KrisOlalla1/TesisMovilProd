@@ -39,4 +39,29 @@ class NotiService {
       matchDateTimeComponents: DateTimeComponents.dateAndTime,
     );
   }
+
+  static Future<void> scheduleDaily(
+    int id, {required String title, required String body, required int hour, required int minute}
+  ) async {
+    final now = tz.TZDateTime.now(tz.local);
+    var scheduledDate = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+    if (scheduledDate.isBefore(now)) {
+      scheduledDate = scheduledDate.add(const Duration(days: 1));
+    }
+
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'daily_channel', 'Recordatorios Diarios',
+        channelDescription: 'Recordatorios recurrentes (signos vitales)',
+        importance: Importance.max, priority: Priority.high,
+      ),
+    );
+
+    await _plugin.zonedSchedule(
+      id, title, body, scheduledDate, details,
+      androidScheduleMode: AndroidScheduleMode.alarmClock,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.time, // Repite diariamente a la misma hora
+    );
+  }
 }

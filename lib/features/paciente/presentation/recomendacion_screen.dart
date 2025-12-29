@@ -260,7 +260,7 @@ class _ChatBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ts = '${msg.at.hour.toString().padLeft(2, '0')}:${msg.at.minute.toString().padLeft(2, '0')}';
-    final bg = msg.isUser ? const Color(0xFF1976D2) : Colors.grey.shade100;
+    final bg = msg.isUser ? Theme.of(context).colorScheme.primary : Colors.white;
     final fg = msg.isUser ? Colors.white : Colors.black87;
     final align = msg.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start;
     final radius = msg.isUser
