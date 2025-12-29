@@ -32,6 +32,7 @@ class LlmRemote {
         queryParameters: {
           if (fast) 'fast': '1',
           'tipo': tipo,
+          'forceOllama': '1', // Forzar llamada a IA sin respuestas predeterminadas
         },
         data: {'prompt': prompt},
         options: Options(headers: {'Content-Type': 'application/json'}),
