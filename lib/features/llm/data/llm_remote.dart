@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
@@ -54,9 +55,13 @@ class LlmRemote {
       final d = (r.data is Map) ? Map<String, dynamic>.from(r.data) : <String, dynamic>{};
       final timedOut = d['timed_out'] == true;
       final texto = (d['recomendacion'] as String?) ?? 'Sin respuesta del modelo';
+      
+      // Formatear la respuesta si es JSON
+      final textoFormateado = _formatearRespuesta(texto);
+      
       return timedOut
-          ? '$texto\n\n(Servidor ocupado: respuesta breve. Intenta nuevamente para más detalle.)'
-          : texto;
+          ? '$textoFormateado\n\n(Servidor ocupado: respuesta breve. Intenta nuevamente para más detalle.)'
+          : textoFormateado;
     } on DioException catch (e) {
       debugPrint('🔴 LLM DioError: ${e.type} - ${e.message}');
       debugPrint('🔴 LLM Status: ${e.response?.statusCode}');
@@ -82,5 +87,90 @@ class LlmRemote {
       debugPrint('🔴 LLM Error general: $e');
       return 'Error inesperado: ${e.toString().substring(0, e.toString().length > 100 ? 100 : e.toString().length)}';
     }
+  }
+  
+  /// Formatea respuesta JSON en texto legible
+  String _formatearRespuesta(String texto) {
+    // Si es texto normal (no JSON), devolverlo tal cual
+    if (!texto.trim().startsWith('{')) {
+      return texto;
+    }
+    
+    try {
+      final json = jsonDecode(texto);
+      if (json is! Map) return texto;
+      
+      final buffer = StringBuffer();
+      
+      // Encabezado
+      buffer.writeln('🩺 Recomendación médica');
+      
+      // Prioridad
+      final prioridad = json['prioridad'] ?? json['priority'] ?? '';
+      if (prioridad.toString().isNotEmpty) {
+        buffer.writeln('Prioridad: $prioridad');
+      }
+      
+      // Anomalías detectadas
+      final anomalias = json['anomalías'] ?? json['anomalias'] ?? json['abnormalities'];
+      if (anomalias != null && anomalias is Map && anomalias.isNotEmpty) {
+        buffer.writeln('\n⚠️ Parámetros alterados:');
+        anomalias.forEach((key, value) {
+          final nombre = _nombreLegible(key.toString());
+          buffer.writeln('• $nombre: $value');
+        });
+      }
+      
+      // Recomendaciones
+      final recomendaciones = json['recomendaciones'] ?? json['recommendations'] ?? json['acciones'];
+      if (recomendaciones != null) {
+        buffer.writeln('\n📋 Recomendaciones:');
+        if (recomendaciones is List) {
+          for (var rec in recomendaciones) {
+            buffer.writeln('• $rec');
+          }
+        } else {
+          buffer.writeln('$recomendaciones');
+        }
+      }
+      
+      // Mensaje o resumen
+      final mensaje = json['mensaje'] ?? json['message'] ?? json['resumen'];
+      if (mensaje != null) {
+        buffer.writeln('\n$mensaje');
+      }
+      
+      // Alertas
+      final alertas = json['alertas'] ?? json['warnings'];
+      if (alertas != null) {
+        buffer.writeln('\n🚨 Alertas:');
+        if (alertas is List) {
+          for (var alerta in alertas) {
+            buffer.writeln('• $alerta');
+          }
+        } else {
+          buffer.writeln('$alertas');
+        }
+      }
+      
+      return buffer.toString().trim();
+    } catch (_) {
+      // Si no es JSON válido, devolver tal cual
+      return texto;
+    }
+  }
+  
+  String _nombreLegible(String key) {
+    const nombres = {
+      'presion_arterial': 'Presión arterial',
+      'frecuencia_cardiaca': 'Frecuencia cardíaca',
+      'temperatura': 'Temperatura',
+      'saturacion_oxigeno': 'Saturación O₂',
+      'saturación_oxigen': 'Saturación O₂',
+      'glucosa': 'Glucosa',
+      'peso': 'Peso',
+      'frecuencia_respiratoria': 'Frec. respiratoria',
+    };
+    return nombres[key.toLowerCase()] ?? key.replaceAll('_', ' ');
   }
 }
