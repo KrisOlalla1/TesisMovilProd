@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 class LlmRemote {
   final Dio _dio;
@@ -27,6 +28,9 @@ class LlmRemote {
         bool fast = true,
       }) async {
     try {
+      debugPrint('🔵 LLM: Enviando request a /llm/recomendacion?forceOllama=1');
+      debugPrint('🔵 LLM: BaseURL: ${_dio.options.baseUrl}');
+      
       final r = await _dio.post(
         '/llm/recomendacion',
         queryParameters: {
@@ -35,8 +39,15 @@ class LlmRemote {
           'forceOllama': '1', // Forzar llamada a IA sin respuestas predeterminadas
         },
         data: {'prompt': prompt},
-        options: Options(headers: {'Content-Type': 'application/json'}),
+        options: Options(
+          headers: {'Content-Type': 'application/json'},
+          sendTimeout: const Duration(seconds: 60),
+          receiveTimeout: const Duration(seconds: 90),
+        ),
       );
+
+      debugPrint('🟢 LLM: Response status: ${r.statusCode}');
+      debugPrint('🟢 LLM: Response data: ${r.data}');
 
       final d = (r.data is Map) ? Map<String, dynamic>.from(r.data) : <String, dynamic>{};
       final timedOut = d['timed_out'] == true;
@@ -45,12 +56,29 @@ class LlmRemote {
           ? '$texto\n\n(Servidor ocupado: respuesta breve. Intenta nuevamente para más detalle.)'
           : texto;
     } on DioException catch (e) {
+      debugPrint('🔴 LLM DioError: ${e.type} - ${e.message}');
+      debugPrint('🔴 LLM Status: ${e.response?.statusCode}');
+      debugPrint('🔴 LLM Response: ${e.response?.data}');
+      
       if (e.response?.statusCode == 401) {
         return 'Sesión expirada. Vuelve a iniciar sesión.';
       }
-      return 'No se pudo obtener una recomendación en este momento.';
-    } catch (_) {
-      return 'No se pudo obtener una recomendación en este momento.';
+      if (e.type == DioExceptionType.connectionTimeout || 
+          e.type == DioExceptionType.receiveTimeout) {
+        return 'La IA tardó demasiado (timeout). Intenta de nuevo.';
+      }
+      if (e.type == DioExceptionType.connectionError) {
+        return 'Error de conexión. Verifica tu internet.';
+      }
+      // Mostrar el error real del servidor si existe
+      final serverError = e.response?.data;
+      if (serverError is Map && serverError['error'] != null) {
+        return 'Error del servidor: ${serverError['error']}';
+      }
+      return 'Error ${e.response?.statusCode ?? "desconocido"}: ${e.message ?? "sin detalles"}';
+    } catch (e) {
+      debugPrint('🔴 LLM Error general: $e');
+      return 'Error inesperado: ${e.toString().substring(0, e.toString().length > 100 ? 100 : e.toString().length)}';
     }
   }
 }
