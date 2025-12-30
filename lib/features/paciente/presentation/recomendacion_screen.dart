@@ -112,51 +112,34 @@ class _RecomendacionScreenState extends ConsumerState<RecomendacionScreen> {
       }
       final seleccion = porDia.entries.toList()..sort((a, b) => b.value.fecha.compareTo(a.value.fecha));
 
-      final buffer = StringBuffer();
-      for (final e in seleccion) {
-        final s = e.value;
-        final f = e.key;
-        // Formatear con nombres y unidades que el backend pueda parsear (SIN FECHAS)
-        final nombreTipo = _formatearTipoSigno(s.tipo);
-        final valorConUnidad = _formatearValorConUnidad(s.tipo, s.valor);
-        buffer.writeln('- $nombreTipo: $valorConUnidad');
-      }
+      const nombrePaciente = 'Paciente';
+      final rangoFecha = '${_ventana.dias} días';
+      final promptResumido = _generarPromptResumido(enVentana, nombrePaciente, rangoFecha);
 
       final prompt = '''
-Eres un asistente clínico especializado en análisis de signos vitales. Habla con lenguaje claro y amable.
+Eres un asistente clínico experto. Analiza estos signos vitales:
+$promptResumido
 
-RANGOS NORMALES DE REFERENCIA (adultos):
-- Presión arterial: 90/60 - 120/80 mmHg (ALERTA si >140/90 o <90/60)
-- Frecuencia cardíaca: 60 - 100 lpm (ALERTA si >100 o <50)
-- Temperatura: 36.1 - 37.2 °C (ALERTA si >38 o <35.5)
-- Saturación oxígeno: 95 - 100% (ALERTA si <92%)
-- Glucosa en ayunas: 70 - 100 mg/dL (ALERTA si >126 o <70)
-- Peso: Evaluar tendencia (ALERTA si cambio >3kg en una semana)
+Preferencia del paciente: $opcion.
 
-INSTRUCCIONES:
-1. PRIMERO analiza cada signo vital y compáralo con los rangos normales
-2. Si hay valores FUERA de rango normal, DEBES alertar claramente con "⚠️ ATENCIÓN:"
-3. Categoriza la prioridad: ALTA (consultar médico urgente), MEDIA (vigilar), BAJA (todo normal)
-4. Si los signos son anómalos, da recomendaciones específicas para cada anomalía
+IMPORTANTE: Responde SIEMPRE en este formato de texto exacto:
 
-Ventana analizada: últimos ${_ventana.dias} días.
-Signos del paciente a analizar:
-${buffer.isEmpty ? '(sin signos registrados en este período)' : buffer.toString()}
+🩺 Recomendación médica — [Título]
+Prioridad: [🔴 ALTA / 🟠 MEDIA / 🟢 BAJA]
+Periodo evaluado: [rango de fechas]
 
-Solicitud del paciente: $opcion
+Parámetros a corregir:
+• [Signo]: [Valor] — [Problema detectado (ej. hipotermia, hipertensión)]
+(Lista TODOS los signos que estén fuera de rango)
 
-FORMATO DE RESPUESTA OBLIGATORIO:
-🏥 Recomendación médica — $opcion
-Prioridad: [ALTA 🔴 / MEDIA 🟡 / BAJA 🟢]
+Acciones inmediatas:
+• [Acción 1]
+• [Acción 2]
 
-[Si hay anomalías, empezar con:]
-⚠️ ATENCIÓN: [describir valores anómalos detectados]
+Siguientes pasos: [Instrucción corto plazo]
+Seguridad del paciente: [Advertencia de urgencia si aplica]
 
-[Resumen del análisis]
-
-[Recomendaciones específicas numeradas]
-
-[Cuándo consultar al médico]
+Habla claro, empático y directo. Usa un tono médico profesional pero accesible.
 ''';
 
       final dio = ref.read(dioProvider);
@@ -375,6 +358,66 @@ bool _tieneSignosAlterados(List<Signo> signos) {
 double? _extraerNumero(String texto) {
   final match = RegExp(r'[\d.]+').firstMatch(texto);
   return match != null ? double.tryParse(match.group(0)!) : null;
+}
+
+/// Genera un prompt resumido similar al de la web
+String _generarPromptResumido(List<Signo> signos, String nombrePaciente, String rangoFecha) {
+  if (signos.isEmpty) return "No hay datos.";
+
+  // 1. Agrupar por tipo
+  final Map<String, List<Signo>> agrupados = {};
+  for (var s in signos) {
+    if (!agrupados.containsKey(s.tipo)) agrupados[s.tipo] = [];
+    agrupados[s.tipo]!.add(s);
+  }
+
+  // 2. Generar líneas de resumen
+  final List<String> lineas = [];
+  
+  agrupados.forEach((tipoInterno, lista) {
+    // Ordenar por fecha (más antiguo a más reciente)
+    lista.sort((a, b) => a.fecha.compareTo(b.fecha));
+    
+    final ultimo = lista.last;
+    final n = lista.length;
+    // Formato de fecha DD/MM/YYYY
+    final fechaStr = "${ultimo.fecha.day}/${ultimo.fecha.month}/${ultimo.fecha.year}";
+    final valorUltimo = ultimo.valor;
+    
+    // Nombre bonito del tipo
+    final nombreTipo = _formatearTipoSigno(tipoInterno); // Helper existente
+    final valorConUnidad = _formatearValorConUnidad(tipoInterno, valorUltimo);
+    final ultTxt = "$valorConUnidad ($fechaStr)";
+    
+    // Intentar extraer números para estadísticas (ignorar PA tipo 120/80)
+    final nums = lista
+        .where((s) => !s.valor.contains('/'))
+        .map((s) => _extraerNumero(s.valor)) // Usar helper existente
+        .where((v) => v != null)
+        .toList();
+
+    if (nums.length >= 2) {
+      final min = nums.reduce((curr, next) => curr! < next! ? curr : next);
+      final max = nums.reduce((curr, next) => curr! > next! ? curr : next);
+      final suma = nums.fold<double>(0, (prev, element) => prev + element!);
+      final prom = suma / nums.length;
+      
+      // Formato con estadísticas
+      lineas.add("$nombreTipo: n=$n, últ=$ultTxt, min=${min!.toStringAsFixed(1)}, max=${max!.toStringAsFixed(1)}, prom=${prom.toStringAsFixed(1)}");
+    } else {
+      // Formato simple (solo último valor)
+      lineas.add("$nombreTipo: n=$n, últ=$ultTxt");
+    }
+  });
+
+  return """
+Paciente: $nombrePaciente
+Rango: $rangoFecha
+Total de mediciones: ${signos.length}
+
+Resumen por signo (compacto):
+${lineas.join('\n')}
+""";
 }
 
 class _Msg {
