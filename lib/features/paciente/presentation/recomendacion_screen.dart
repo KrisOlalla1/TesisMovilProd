@@ -124,18 +124,16 @@ class _RecomendacionScreenState extends ConsumerState<RecomendacionScreen> {
       final llm = LlmRemote(dio);
       final tipo = _tipoMap[opcion] ?? 'general';
       
-      // Detectar si hay signos alterados para forzar llamada a Ollama
-      final haySignosAlterados = _tieneSignosAlterados(enVentana);
-      debugPrint('📡 Llamando a IA: ${enVentana.length} signos, Alterados=$haySignosAlterados');
+      debugPrint('📡 Llamando a backend con ${enVentana.length} signos');
       
-      // FORZAR SIEMPRE forceOllama=1 para pruebas
+      // NO usar forceOllama - dejar que el backend use sus reglas locales optimizadas
+      // Esto es igual que el web: fast=1, tipo=general, SIN forceOllama
       final texto = await llm.recomendacion(
         prompt, 
         tipo: tipo, 
-        fast: false, // Desactivar fast para obtener respuesta completa
-        forceOllama: true, // SIEMPRE forzar Ollama
+        fast: true, // Usar reglas locales rápidas del backend
       );
-      debugPrint('✅ Respuesta IA (primeros 200 chars): ${texto.substring(0, texto.length > 200 ? 200 : texto.length)}');
+      debugPrint('✅ Respuesta recibida: ${texto.length} chars');
 
       _typing = false;
       _mensajes.add(_Msg.assistant(texto, suffix: ' — ${_ventana.label}'));

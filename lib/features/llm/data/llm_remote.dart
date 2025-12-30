@@ -23,15 +23,13 @@ class LlmRemote {
   }
 
   /// tipo: 'general' | 'preocupante' | 'vigilar' | 'habitos'
-  /// forceOllama: Si true, salta respuestas predeterminadas y llama a Ollama directamente
   Future<String> recomendacion(
       String prompt, {
         String tipo = 'general',
         bool fast = true,
-        bool forceOllama = false, // Solo forzar cuando hay signos alterados
       }) async {
     try {
-      debugPrint('🔵 LLM: Enviando request a /llm/recomendacion${forceOllama ? "?forceOllama=1" : ""}');
+      debugPrint('🔵 LLM: Enviando request a /llm/recomendacion (fast=$fast, tipo=$tipo)');
       debugPrint('🔵 LLM: BaseURL: ${_dio.options.baseUrl}');
       
       final r = await _dio.post(
@@ -39,7 +37,7 @@ class LlmRemote {
         queryParameters: {
           if (fast) 'fast': '1',
           'tipo': tipo,
-          if (forceOllama) 'forceOllama': '1', // Solo enviar si hay signos alterados
+          // NO enviar forceOllama - usar reglas locales del backend como el web
         },
         data: {'prompt': prompt},
         options: Options(
