@@ -89,88 +89,137 @@ class LlmRemote {
     }
   }
   
-  /// Formatea respuesta JSON en texto legible
+  /// Formatea respuesta JSON en texto legible y bonito
   String _formatearRespuesta(String texto) {
-    // Si es texto normal (no JSON), devolverlo tal cual
-    if (!texto.trim().startsWith('{')) {
-      return texto;
+    // Intentar encontrar JSON si está embebido en texto
+    String jsonString = texto;
+    final startIndex = texto.indexOf('{');
+    final endIndex = texto.lastIndexOf('}');
+    if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
+      jsonString = texto.substring(startIndex, endIndex + 1);
+    } else if (!texto.trim().startsWith('{')) {
+      return texto; // No parece JSON
     }
-    
+
     try {
-      final json = jsonDecode(texto);
+      final json = jsonDecode(jsonString);
       if (json is! Map) return texto;
-      
+
       final buffer = StringBuffer();
+
+      // 1. Título y Prioridad
+      // buffer.writeln('🩺 Recomendación médica'); (El UI ya pone título a veces, pero por si acaso)
+      // El usuario quiere: "🩺 Recomendación médica — Revisión general"
+      // Como no tengo el "tipo" acá fácil, pondré genérico o extraeré título
+      final titulo = json['título'] ?? json['titulo'] ?? json['title'] ?? 'Recomendación médica';
+      buffer.writeln('🩺 $titulo');
+
+      final prioridad = json['prioridad'] ?? json['priority'] ?? json['nivel'] ?? 'MEDIA';
+      String iconoPrioridad = '🟠';
+      final pUpper = prioridad.toString().toUpperCase();
+      if (pUpper.contains('ALTA') || pUpper.contains('RED') || pUpper.contains('URGENTE')) iconoPrioridad = '🔴';
+      if (pUpper.contains('BAJA') || pUpper.contains('VERDE')) iconoPrioridad = '🟢';
       
-      // Encabezado
-      buffer.writeln('🩺 Recomendación médica');
-      
-      // Prioridad
-      final prioridad = json['prioridad'] ?? json['priority'] ?? '';
-      if (prioridad.toString().isNotEmpty) {
-        buffer.writeln('Prioridad: $prioridad');
+      buffer.writeln('Prioridad: $iconoPrioridad $pUpper');
+
+      // 2. Periodo
+      final periodo = json['periodo'] ?? json['rango'] ?? json['period'];
+      if (periodo != null) {
+        buffer.writeln('Periodo evaluado: $periodo');
       }
-      
-      // Anomalías detectadas
-      final anomalias = json['anomalías'] ?? json['anomalias'] ?? json['abnormalities'];
-      if (anomalias != null && anomalias is Map && anomalias.isNotEmpty) {
-        buffer.writeln('\n⚠️ Parámetros alterados:');
-        anomalias.forEach((key, value) {
-          final nombre = _nombreLegible(key.toString());
-          buffer.writeln('• $nombre: $value');
-        });
+
+      // 3. Parámetros a corregir (Anomalías)
+      // Puede venir como Map {"signo": valor} o List [{"signo":..., "valor":...}]
+      final anomalias = json['parámetros_a_corregir'] ?? 
+                        json['parametros_a_corregir'] ?? 
+                        json['anomalías'] ?? 
+                        json['anomalias'] ?? 
+                        json['abnormalities'] ??
+                        json['signos_alterados'];
+
+      if (anomalias != null) {
+        if (anomalias is List && anomalias.isNotEmpty) {
+           buffer.writeln('\n⚠️ Parámetros a corregir:');
+           for (var item in anomalias) {
+             if (item is Map) {
+               final signo = item['signo'] ?? item['nombre'] ?? 'Signo';
+               final valor = item['valor'] ?? '';
+               final problema = item['problema'] ?? item['detalle'] ?? '';
+               buffer.writeln('• $signo: $valor ${problema.isNotEmpty ? "— $problema" : ""}');
+             } else {
+               buffer.writeln('• $item');
+             }
+           }
+        } else if (anomalias is Map && anomalias.isNotEmpty) {
+           buffer.writeln('\n⚠️ Parámetros a corregir:');
+           anomalias.forEach((key, value) {
+             final nombre = _nombreLegible(key.toString());
+             buffer.writeln('• $nombre: $value');
+           });
+        }
       }
-      
-      // Recomendaciones
-      final recomendaciones = json['recomendaciones'] ?? json['recommendations'] ?? json['acciones'];
-      if (recomendaciones != null) {
-        buffer.writeln('\n📋 Recomendaciones:');
-        if (recomendaciones is List) {
-          for (var rec in recomendaciones) {
-            buffer.writeln('• $rec');
+
+      // 4. Acciones inmediatas / Recomendaciones
+      final acciones = json['acciones_inmediatas'] ?? 
+                       json['acciones'] ?? 
+                       json['recomendaciones'] ?? 
+                       json['recommendations'] ??
+                       json['pasos'];
+                       
+      if (acciones != null) {
+        if (acciones is List && acciones.isNotEmpty) {
+          buffer.writeln('\n📋 Acciones inmediatas:');
+          for (var item in acciones) {
+            buffer.writeln('• $item');
           }
+        } else if (acciones is String) {
+          buffer.writeln('\n📋 Acciones inmediatas:\n$acciones');
+        }
+      }
+
+      // 5. Siguientes pasos
+      final siguientesPasos = json['siguientes_pasos'] ?? json['next_steps'] ?? json['seguimiento'];
+      if (siguientesPasos != null) {
+        buffer.writeln('\nSiguientes pasos: $siguientesPasos');
+      }
+
+      // 6. Seguridad / Alertas
+      final seguridad = json['seguridad_del_paciente'] ?? 
+                        json['seguridad'] ?? 
+                        json['señales_alarma'] ?? 
+                        json['alertas'] ??
+                        json['warnings'];
+                        
+      if (seguridad != null) {
+        if (seguridad is List && seguridad.isNotEmpty) {
+           buffer.writeln('\n🚨 Seguridad del paciente:');
+           for (var item in seguridad) buffer.writeln('• $item');
         } else {
-          buffer.writeln('$recomendaciones');
+           buffer.writeln('\n🚨 Seguridad del paciente: $seguridad');
         }
       }
       
-      // Mensaje o resumen
-      final mensaje = json['mensaje'] ?? json['message'] ?? json['resumen'];
-      if (mensaje != null) {
-        buffer.writeln('\n$mensaje');
+      // Si el buffer quedó muy vacío (ej. solo título), intenta devolver 'mensaje' plano
+      if (buffer.length < 50 && json.containsKey('mensaje')) {
+        return '$buffer\n\n${json['mensaje']}';
       }
-      
-      // Alertas
-      final alertas = json['alertas'] ?? json['warnings'];
-      if (alertas != null) {
-        buffer.writeln('\n🚨 Alertas:');
-        if (alertas is List) {
-          for (var alerta in alertas) {
-            buffer.writeln('• $alerta');
-          }
-        } else {
-          buffer.writeln('$alertas');
-        }
-      }
-      
+
       return buffer.toString().trim();
-    } catch (_) {
-      // Si no es JSON válido, devolver tal cual
-      return texto;
+    } catch (e) {
+      debugPrint('Error parseando JSON LLM: $e');
+      return texto; // Fallback al texto original si explota
     }
   }
-  
+
   String _nombreLegible(String key) {
-    const nombres = {
-      'presion_arterial': 'Presión arterial',
-      'frecuencia_cardiaca': 'Frecuencia cardíaca',
-      'temperatura': 'Temperatura',
-      'saturacion_oxigeno': 'Saturación O₂',
-      'saturación_oxigen': 'Saturación O₂',
-      'glucosa': 'Glucosa',
-      'peso': 'Peso',
-      'frecuencia_respiratoria': 'Frec. respiratoria',
-    };
-    return nombres[key.toLowerCase()] ?? key.replaceAll('_', ' ');
+    final k = key.toLowerCase();
+    if (k.contains('presion')) return 'Presión arterial';
+    if (k.contains('cardiaca') || k.contains('cardíaca')) return 'Frecuencia cardíaca';
+    if (k.contains('temperatura')) return 'Temperatura';
+    if (k.contains('saturacion') || k.contains('oxigen')) return 'Saturación O₂';
+    if (k.contains('respiratoria')) return 'Frec. respiratoria';
+    if (k.contains('glucosa')) return 'Glucosa';
+    if (k.contains('peso')) return 'Peso';
+    return key.replaceAll('_', ' ');
   }
 }
