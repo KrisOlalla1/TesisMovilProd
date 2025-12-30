@@ -91,38 +91,81 @@ class LlmRemote {
   
   /// Formatea respuesta JSON en texto legible y bonito
   String _formatearRespuesta(String texto) {
-    // 1. Caso Híbrido: Si empieza con el formato de texto esperado pero tiene basura JSON al final
-    if (texto.trim().startsWith('🩺')) {
-      final jsonStart = texto.indexOf('{');
-      // Si hay un JSON que empieza después de la primera línea (después del título)
-      if (jsonStart > 10) {
-        // Cortar el texto antes del JSON y devolver solo la parte limpia
-        return texto.substring(0, jsonStart).trim();
-      }
-      // Si no hay JSON obvio o está muy al principio, asumimos que es texto correcto
-      return texto;
-    }
+    Map<String, dynamic>? json;
 
-    // 2. Caso JSON: Intentar encontrar y parsear JSON
-    String jsonString = texto;
-    final startIndex = texto.indexOf('{');
-    final endIndex = texto.lastIndexOf('}');
-    if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
-      jsonString = texto.substring(startIndex, endIndex + 1);
-    } else if (!texto.trim().startsWith('{')) {
-      return texto; // No parece JSON ni tiene el formato de texto esperado
-    }
-
+    // 1. Intentar encontrar y parsear JSON formal
     try {
-      final json = jsonDecode(jsonString);
-      if (json is! Map) return texto;
+      String jsonString = texto;
+      final startIndex = texto.indexOf('{');
+      final endIndex = texto.lastIndexOf('}');
+      if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
+        jsonString = texto.substring(startIndex, endIndex + 1);
+        json = jsonDecode(jsonString);
+      } else if (texto.trim().startsWith('{')) {
+        json = jsonDecode(texto);
+      }
+    } catch (_) {
+      // Ignorar error de parseo por ahora, intentaremos fallback
+    }
 
+    // 2. Fallback: Parseo manual robusto si jsonDecode falló o no encontró JSON
+    // Buscamos patrones clave incluso si el JSON está roto
+    if (json == null || json is! Map) {
+      final tieneLlaves = texto.contains('{') || texto.contains('}');
+      // Si parece JSON (tiene llaves) o tiene claves conocidas, intentamos extraer datos a la fuerza
+      if (tieneLlaves || texto.contains('"prioridad"') || texto.contains('Prioridad:')) {
+         json = _extraerDatosManualmente(texto);
+      }
+    }
+
+    // 3. Si logramos obtener un mapa de datos (sea por decode o fallback), formateamos
+    if (json != null && json is Map && json.isNotEmpty) {
+      return _construirTextoDesdeMapa(Map<String, dynamic>.from(json));
+    }
+
+    // 4. Si todo falla, devolvemos el texto original limpiando posible basura JSON al final
+    // solo si estamos seguros de que el texto original tiene contenido valioso al principio
+    if (texto.trim().startsWith('🩺')) {
+        final cut = texto.indexOf('{');
+        if (cut > 50) { // Solo cortar si hay al menos 50 caracteres de texto antes del JSON
+           return texto.substring(0, cut).trim(); 
+        }
+    }
+
+    return texto;
+  }
+
+  /// Intenta extraer campos clave usando Regex cuando el JSON está malformado
+  Map<String, dynamic> _extraerDatosManualmente(String texto) {
+    final datos = <String, dynamic>{};
+    
+    // Prioridad
+    final matchPrio = RegExp(r'"prioridad":\s*"([^"]+)"', caseSensitive: false).firstMatch(texto);
+    if (matchPrio != null) datos['prioridad'] = matchPrio.group(1);
+
+    // Periodo
+    final matchPeriodo = RegExp(r'"periodo":\s*"([^"]+)"', caseSensitive: false).firstMatch(texto);
+    if (matchPeriodo != null) datos['periodo'] = matchPeriodo.group(1);
+    
+    // Título
+    final matchTitulo = RegExp(r'"título":\s*"([^"]+)"', caseSensitive: false).firstMatch(texto);
+    if (matchTitulo != null) datos['título'] = matchTitulo.group(1);
+
+    // Anomalías (simple extracción de valores si existen)
+    // Esto es limitado, pero mejor que nada. Buscamos bloques de objetos en arrays
+    if (texto.contains('parámetros_a_corregir') || texto.contains('anomalías')) {
+       // Intentar capturar algo simple... es difícil con regex anidados.
+       // Asumimos que si llegamos aquí, mejor devolveremos los campos planos que encontramos
+       datos['mensaje'] = "No se pudo formatear el detalle completo, pero se detectaron datos.";
+    }
+    
+    return datos;
+  }
+
+  String _construirTextoDesdeMapa(Map<String, dynamic> json) {
       final buffer = StringBuffer();
 
       // 1. Título y Prioridad
-      // buffer.writeln('🩺 Recomendación médica'); (El UI ya pone título a veces, pero por si acaso)
-      // El usuario quiere: "🩺 Recomendación médica — Revisión general"
-      // Como no tengo el "tipo" acá fácil, pondré genérico o extraeré título
       final titulo = json['título'] ?? json['titulo'] ?? json['title'] ?? 'Recomendación médica';
       buffer.writeln('🩺 $titulo');
 
@@ -141,7 +184,6 @@ class LlmRemote {
       }
 
       // 3. Parámetros a corregir (Anomalías)
-      // Puede venir como Map {"signo": valor} o List [{"signo":..., "valor":...}]
       final anomalias = json['parámetros_a_corregir'] ?? 
                         json['parametros_a_corregir'] ?? 
                         json['anomalías'] ?? 
@@ -217,10 +259,6 @@ class LlmRemote {
       }
 
       return buffer.toString().trim();
-    } catch (e) {
-      debugPrint('Error parseando JSON LLM: $e');
-      return texto; // Fallback al texto original si explota
-    }
   }
 
   String _nombreLegible(String key) {
