@@ -163,8 +163,16 @@ Prioridad: [ALTA 🔴 / MEDIA 🟡 / BAJA 🟢]
       final llm = LlmRemote(dio);
       final tipo = _tipoMap[opcion] ?? 'general';
       
-      debugPrint('📡 Llamando a IA con ${buffer.length} signos...');
-      final texto = await llm.recomendacion(prompt, tipo: tipo, fast: true);
+      // Detectar si hay signos alterados para forzar llamada a Ollama
+      final haySignosAlterados = _tieneSignosAlterados(enVentana);
+      debugPrint('📡 Llamando a IA con ${enVentana.length} signos. Alterados: $haySignosAlterados');
+      
+      final texto = await llm.recomendacion(
+        prompt, 
+        tipo: tipo, 
+        fast: true,
+        forceOllama: haySignosAlterados, // Solo forzar Ollama si hay anomalías
+      );
       debugPrint('✅ Respuesta IA recibida: ${texto.substring(0, texto.length > 50 ? 50 : texto.length)}...');
 
       _typing = false;
@@ -310,6 +318,63 @@ String _formatearValorConUnidad(String tipo, String valor) {
     default:
       return valor;
   }
+}
+
+/// Detecta si hay signos vitales fuera de rangos normales
+bool _tieneSignosAlterados(List<Signo> signos) {
+  for (final signo in signos) {
+    final tipo = signo.tipo.toLowerCase();
+    final valor = signo.valor;
+    
+    // Presión arterial (90/60 - 120/80 normal)
+    if (tipo.contains('presion') || tipo.contains('arterial')) {
+      final match = RegExp(r'(\d+)\s*/\s*(\d+)').firstMatch(valor);
+      if (match != null) {
+        final sistolica = int.tryParse(match.group(1)!) ?? 0;
+        final diastolica = int.tryParse(match.group(2)!) ?? 0;
+        if (sistolica >= 140 || sistolica < 90 || diastolica >= 90 || diastolica < 60) {
+          return true;
+        }
+      }
+    }
+    
+    // Frecuencia cardíaca (60-100 lpm normal)
+    if (tipo.contains('cardiaca') || tipo.contains('pulso')) {
+      final val = _extraerNumero(valor);
+      if (val != null && (val > 100 || val < 60)) return true;
+    }
+    
+    // Frecuencia respiratoria (12-20 rpm normal)
+    if (tipo.contains('respiratoria')) {
+      final val = _extraerNumero(valor);
+      if (val != null && (val > 20 || val < 12)) return true;
+    }
+    
+    // Temperatura (36-37.2 °C normal) - ALERTA si < 35 o >= 38
+    if (tipo.contains('temperatura')) {
+      final val = _extraerNumero(valor);
+      if (val != null && (val >= 38 || val < 35)) return true;
+    }
+    
+    // Saturación O2 (>= 95% normal)
+    if (tipo.contains('saturacion') || tipo.contains('oxigeno') || tipo.contains('spo2')) {
+      final val = _extraerNumero(valor);
+      if (val != null && val < 95) return true;
+    }
+    
+    // Glucosa (70-99 mg/dL normal en ayunas)
+    if (tipo.contains('glucosa')) {
+      final val = _extraerNumero(valor);
+      if (val != null && (val >= 126 || val < 70)) return true;
+    }
+  }
+  return false;
+}
+
+/// Extrae el primer número de un texto
+double? _extraerNumero(String texto) {
+  final match = RegExp(r'[\d.]+').firstMatch(texto);
+  return match != null ? double.tryParse(match.group(0)!) : null;
 }
 
 class _Msg {
