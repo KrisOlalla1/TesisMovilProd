@@ -54,7 +54,25 @@ class LlmRemote {
 
       final d = (r.data is Map) ? Map<String, dynamic>.from(r.data) : <String, dynamic>{};
       final timedOut = d['timed_out'] == true;
-      final texto = (d['recomendacion'] as String?) ?? 'Sin respuesta del modelo';
+      
+      // Extraer texto de respuesta (puede venir en varios campos)
+      String texto = (d['recomendacion'] ?? d['respuesta'] ?? d['mensaje'] ?? d['text'] ?? 'Sin respuesta del modelo').toString();
+      
+      // Limpiar literales \n que el backend envía como texto
+      texto = texto
+          .replaceAll('\\n\\n', '\n\n')
+          .replaceAll('\\n', '\n')
+          .replaceAll('\\t', ' ')
+          .replaceAll(RegExp(r'\s+'), ' ') // Múltiples espacios a uno
+          .replaceAll(' \n', '\n')
+          .replaceAll('\n ', '\n')
+          .trim();
+      
+      // Si el texto tiene "Peso:", "IMC:", etc. es estadísticas, no recomendación
+      // Agregar encabezado si falta
+      if (!texto.contains('🩺') && !texto.startsWith('Recomendación')) {
+        texto = '🩺 Recomendación médica\n$texto';
+      }
       
       // Formatear la respuesta si es JSON
       final textoFormateado = _formatearRespuesta(texto);
