@@ -91,14 +91,26 @@ class LlmRemote {
   
   /// Formatea respuesta JSON en texto legible y bonito
   String _formatearRespuesta(String texto) {
-    // Intentar encontrar JSON si está embebido en texto
+    // 1. Caso Híbrido: Si empieza con el formato de texto esperado pero tiene basura JSON al final
+    if (texto.trim().startsWith('🩺')) {
+      final jsonStart = texto.indexOf('{');
+      // Si hay un JSON que empieza después de la primera línea (después del título)
+      if (jsonStart > 10) {
+        // Cortar el texto antes del JSON y devolver solo la parte limpia
+        return texto.substring(0, jsonStart).trim();
+      }
+      // Si no hay JSON obvio o está muy al principio, asumimos que es texto correcto
+      return texto;
+    }
+
+    // 2. Caso JSON: Intentar encontrar y parsear JSON
     String jsonString = texto;
     final startIndex = texto.indexOf('{');
     final endIndex = texto.lastIndexOf('}');
     if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
       jsonString = texto.substring(startIndex, endIndex + 1);
     } else if (!texto.trim().startsWith('{')) {
-      return texto; // No parece JSON
+      return texto; // No parece JSON ni tiene el formato de texto esperado
     }
 
     try {
