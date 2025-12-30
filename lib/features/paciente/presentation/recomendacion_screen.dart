@@ -118,6 +118,7 @@ class _RecomendacionScreenState extends ConsumerState<RecomendacionScreen> {
       
       // Generar prompt en formato EXACTO que espera el backend (igual que la web)
       final prompt = _generarPromptResumido(enVentana, nombrePaciente, rangoFecha);
+      debugPrint('📝 PROMPT ENVIADO:\n$prompt');
 
       final dio = ref.read(dioProvider);
       final llm = LlmRemote(dio);
@@ -125,15 +126,16 @@ class _RecomendacionScreenState extends ConsumerState<RecomendacionScreen> {
       
       // Detectar si hay signos alterados para forzar llamada a Ollama
       final haySignosAlterados = _tieneSignosAlterados(enVentana);
-      debugPrint('📡 Llamando a IA con ${enVentana.length} signos. Alterados: $haySignosAlterados');
+      debugPrint('📡 Llamando a IA: ${enVentana.length} signos, Alterados=$haySignosAlterados');
       
+      // FORZAR SIEMPRE forceOllama=1 para pruebas
       final texto = await llm.recomendacion(
         prompt, 
         tipo: tipo, 
-        fast: true,
-        forceOllama: haySignosAlterados, // Solo forzar Ollama si hay anomalías
+        fast: false, // Desactivar fast para obtener respuesta completa
+        forceOllama: true, // SIEMPRE forzar Ollama
       );
-      debugPrint('✅ Respuesta IA recibida: ${texto.substring(0, texto.length > 50 ? 50 : texto.length)}...');
+      debugPrint('✅ Respuesta IA (primeros 200 chars): ${texto.substring(0, texto.length > 200 ? 200 : texto.length)}');
 
       _typing = false;
       _mensajes.add(_Msg.assistant(texto, suffix: ' — ${_ventana.label}'));
