@@ -164,34 +164,47 @@ class LlmRemote {
 
   String _construirTextoDesdeMapa(Map<String, dynamic> json) {
       final buffer = StringBuffer();
+      final keysManejadas = <String>{}; // Para rastrear qué ya mostramos
 
-      // 1. Título y Prioridad
-      final titulo = json['título'] ?? json['titulo'] ?? json['title'] ?? 'Recomendación médica';
+      // 1. Título
+      var titulo = json['título'] ?? json['titulo'] ?? json['title'] ?? 'Recomendación médica';
+      // Limpiar titulo si viene con emoji repetido
+      titulo = titulo.toString().replaceAll('🩺', '').trim();
       buffer.writeln('🩺 $titulo');
+      keysManejadas.addAll(['título', 'titulo', 'title']);
 
-      final prioridad = json['prioridad'] ?? json['priority'] ?? json['nivel'] ?? 'MEDIA';
-      String iconoPrioridad = '🟠';
-      final pUpper = prioridad.toString().toUpperCase();
-      if (pUpper.contains('ALTA') || pUpper.contains('RED') || pUpper.contains('URGENTE')) iconoPrioridad = '🔴';
-      if (pUpper.contains('BAJA') || pUpper.contains('VERDE')) iconoPrioridad = '🟢';
+      // 2. Prioridad
+      var prioridad = json['prioridad'] ?? json['priority'] ?? json['nivel'] ?? 'MEDIA';
+      keysManejadas.addAll(['prioridad', 'priority', 'nivel']);
       
-      buffer.writeln('Prioridad: $iconoPrioridad $pUpper');
+      String pTexto = prioridad.toString().toUpperCase().replaceAll('🔴', '').replaceAll('🟠', '').replaceAll('🟢', '').trim();
+      if (pTexto.isEmpty) pTexto = 'MEDIA'; // Default si solo venía emoji
 
-      // 2. Periodo
+      String icono = '🟠'; // Default MEDIA
+      if (pTexto.contains('ALTA') || pTexto.contains('RED') || pTexto.contains('URGENTE') || prioridad.toString().contains('🔴')) {
+        icono = '🔴';
+        if (pTexto == 'MEDIA') pTexto = 'ALTA'; // Corregir si detectamos rojo pero texto era default
+      } else if (pTexto.contains('BAJA') || pTexto.contains('VERDE') || prioridad.toString().contains('🟢')) {
+        icono = '🟢';
+        if (pTexto == 'MEDIA') pTexto = 'BAJA';
+      }
+      
+      buffer.writeln('Prioridad: $icono $pTexto');
+
+      // 3. Periodo
       final periodo = json['periodo'] ?? json['rango'] ?? json['period'];
       if (periodo != null) {
         buffer.writeln('Periodo evaluado: $periodo');
+        keysManejadas.addAll(['periodo', 'rango', 'period']);
       }
 
-      // 3. Parámetros a corregir (Anomalías)
-      final anomalias = json['parámetros_a_corregir'] ?? 
-                        json['parametros_a_corregir'] ?? 
-                        json['anomalías'] ?? 
-                        json['anomalias'] ?? 
-                        json['abnormalities'] ??
-                        json['signos_alterados'];
-
-      if (anomalias != null) {
+      // 4. Parámetros a corregir (Anomalías)
+      final anomaliasKey = ['parámetros_a_corregir', 'parametros_a_corregir', 'anomalías', 'anomalias', 'abnormalities', 'signos_alterados']
+          .firstWhere((k) => json.containsKey(k), orElse: () => '');
+      
+      if (anomaliasKey.isNotEmpty) {
+        keysManejadas.add(anomaliasKey);
+        final anomalias = json[anomaliasKey];
         if (anomalias is List && anomalias.isNotEmpty) {
            buffer.writeln('\n⚠️ Parámetros a corregir:');
            for (var item in anomalias) {
@@ -213,14 +226,13 @@ class LlmRemote {
         }
       }
 
-      // 4. Acciones inmediatas / Recomendaciones
-      final acciones = json['acciones_inmediatas'] ?? 
-                       json['acciones'] ?? 
-                       json['recomendaciones'] ?? 
-                       json['recommendations'] ??
-                       json['pasos'];
-                       
-      if (acciones != null) {
+      // 5. Acciones inmediatas / Recomendaciones
+      final accionesKey = ['acciones_inmediatas', 'acciones', 'recomendaciones', 'recommendations', 'pasos', 'tratamiento', 'consejos']
+          .firstWhere((k) => json.containsKey(k), orElse: () => '');
+
+      if (accionesKey.isNotEmpty) {
+        keysManejadas.add(accionesKey);
+        final acciones = json[accionesKey];
         if (acciones is List && acciones.isNotEmpty) {
           buffer.writeln('\n📋 Acciones inmediatas:');
           for (var item in acciones) {
@@ -231,20 +243,23 @@ class LlmRemote {
         }
       }
 
-      // 5. Siguientes pasos
-      final siguientesPasos = json['siguientes_pasos'] ?? json['next_steps'] ?? json['seguimiento'];
-      if (siguientesPasos != null) {
+      // 6. Siguientes pasos
+      final siguientesPasosKey = ['siguientes_pasos', 'next_steps', 'seguimiento']
+          .firstWhere((k) => json.containsKey(k), orElse: () => '');
+          
+      if (siguientesPasosKey.isNotEmpty) {
+        keysManejadas.add(siguientesPasosKey);
+        final siguientesPasos = json[siguientesPasosKey];
         buffer.writeln('\nSiguientes pasos: $siguientesPasos');
       }
 
-      // 6. Seguridad / Alertas
-      final seguridad = json['seguridad_del_paciente'] ?? 
-                        json['seguridad'] ?? 
-                        json['señales_alarma'] ?? 
-                        json['alertas'] ??
-                        json['warnings'];
-                        
-      if (seguridad != null) {
+      // 7. Seguridad / Alertas
+      final seguridadKey = ['seguridad_del_paciente', 'seguridad', 'señales_alarma', 'alertas', 'warnings']
+          .firstWhere((k) => json.containsKey(k), orElse: () => '');
+
+      if (seguridadKey.isNotEmpty) {
+        keysManejadas.add(seguridadKey);
+        final seguridad = json[seguridadKey];
         if (seguridad is List && seguridad.isNotEmpty) {
            buffer.writeln('\n🚨 Seguridad del paciente:');
            for (var item in seguridad) buffer.writeln('• $item');
@@ -253,9 +268,32 @@ class LlmRemote {
         }
       }
       
-      // Si el buffer quedó muy vacío (ej. solo título), intenta devolver 'mensaje' plano
-      if (buffer.length < 50 && json.containsKey('mensaje')) {
-        return '$buffer\n\n${json['mensaje']}';
+      // 8. Mensaje / Resumen (si existe)
+      final mensajeKey = ['mensaje', 'message', 'resumen', 'summary']
+          .firstWhere((k) => json.containsKey(k), orElse: () => '');
+      if (mensajeKey.isNotEmpty) {
+         keysManejadas.add(mensajeKey);
+         if (buffer.length < 100) { // Solo si falta info
+            buffer.writeln('\n${json[mensajeKey]}');
+         }
+      }
+
+      // 9. FALLBACK GENÉRICO: Si el buffer es muy corto, imprimir keys restantes no manejadas
+      // Esto es crucial para debugging visual si la IA inventa keys nuevas
+      if (buffer.length < 150) {
+        json.forEach((k, v) {
+          if (!keysManejadas.contains(k)) {
+             if (v is List && v.isNotEmpty) {
+               buffer.writeln('\n📝 $k:'); // Mostrar key como título
+               for (var i in v) buffer.writeln('• $i');
+             } else if (v is String && v.length > 5) {
+               buffer.writeln('\n📝 $k: $v');
+             } else if (v is Map && v.isNotEmpty) {
+               buffer.writeln('\n📝 $k:');
+               v.forEach((mk, mv) => buffer.writeln('• $mk: $mv'));
+             }
+          }
+        });
       }
 
       return buffer.toString().trim();
