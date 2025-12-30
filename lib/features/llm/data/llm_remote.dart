@@ -90,49 +90,37 @@ class LlmRemote {
   }
   
   /// Formatea respuesta JSON en texto legible y bonito
+  /// Formatea respuesta JSON en texto legible. Si es texto normal, lo devuelve tal cual.
   String _formatearRespuesta(String texto) {
-    Map<String, dynamic>? json;
+    // Si el texto NO contiene JSON (no tiene llaves), devolverlo sin modificar
+    final startIndex = texto.indexOf('{');
+    final endIndex = texto.lastIndexOf('}');
+    
+    // No hay JSON válido -> devolver texto original
+    if (startIndex == -1 || endIndex == -1 || endIndex <= startIndex) {
+      return texto;
+    }
 
-    // 1. Intentar encontrar y parsear JSON formal
+    // Intentar parsear el JSON encontrado
     try {
-      String jsonString = texto;
-      final startIndex = texto.indexOf('{');
-      final endIndex = texto.lastIndexOf('}');
-      if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
-        jsonString = texto.substring(startIndex, endIndex + 1);
-        json = jsonDecode(jsonString);
-      } else if (texto.trim().startsWith('{')) {
-        json = jsonDecode(texto);
+      final jsonString = texto.substring(startIndex, endIndex + 1);
+      final json = jsonDecode(jsonString);
+      
+      if (json is! Map || json.isEmpty) {
+        return texto; // JSON vacío o no es objeto -> devolver original
       }
-    } catch (_) {
-      // Ignorar error de parseo por ahora, intentaremos fallback
-    }
 
-    // 2. Fallback: Parseo manual robusto si jsonDecode falló o no encontró JSON
-    // Buscamos patrones clave incluso si el JSON está roto
-    if (json == null || json is! Map) {
-      final tieneLlaves = texto.contains('{') || texto.contains('}');
-      // Si parece JSON (tiene llaves) o tiene claves conocidas, intentamos extraer datos a la fuerza
-      if (tieneLlaves || texto.contains('"prioridad"') || texto.contains('Prioridad:')) {
-         json = _extraerDatosManualmente(texto);
-      }
-    }
-
-    // 3. Si logramos obtener un mapa de datos (sea por decode o fallback), formateamos
-    if (json != null && json is Map && json.isNotEmpty) {
+      // Parseo exitoso -> formatear bonito
       return _construirTextoDesdeMapa(Map<String, dynamic>.from(json));
+    } catch (e) {
+      debugPrint('⚠️ Error parseando JSON: $e');
+      // Error en parseo -> devolver texto original (puede ser texto normal mezclado con basura)
+      // Pero si el texto empieza bien (con emoji), cortar la basura JSON
+      if (texto.trim().startsWith('🩺') && startIndex > 50) {
+        return texto.substring(0, startIndex).trim();
+      }
+      return texto;
     }
-
-    // 4. Si todo falla, devolvemos el texto original limpiando posible basura JSON al final
-    // solo si estamos seguros de que el texto original tiene contenido valioso al principio
-    if (texto.trim().startsWith('🩺')) {
-        final cut = texto.indexOf('{');
-        if (cut > 50) { // Solo cortar si hay al menos 50 caracteres de texto antes del JSON
-           return texto.substring(0, cut).trim(); 
-        }
-    }
-
-    return texto;
   }
 
   /// Intenta extraer campos clave usando Regex cuando el JSON está malformado

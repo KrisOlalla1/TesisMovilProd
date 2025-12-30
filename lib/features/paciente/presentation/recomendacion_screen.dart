@@ -113,34 +113,11 @@ class _RecomendacionScreenState extends ConsumerState<RecomendacionScreen> {
       final seleccion = porDia.entries.toList()..sort((a, b) => b.value.fecha.compareTo(a.value.fecha));
 
       const nombrePaciente = 'Paciente';
-      final rangoFecha = '${_ventana.dias} días';
-      final promptResumido = _generarPromptResumido(enVentana, nombrePaciente, rangoFecha);
-
-      final prompt = '''
-Eres un asistente clínico experto. Analiza estos signos vitales:
-$promptResumido
-
-Preferencia del paciente: $opcion.
-
-IMPORTANTE: Responde SIEMPRE en este formato de texto exacto:
-
-🩺 Recomendación médica — [Título]
-Prioridad: [🔴 ALTA / 🟠 MEDIA / 🟢 BAJA]
-Periodo evaluado: [rango de fechas]
-
-Parámetros a corregir:
-• [Signo]: [Valor] — [Problema detectado (ej. hipotermia, hipertensión)]
-(Lista TODOS los signos que estén fuera de rango)
-
-Acciones inmediatas:
-• [Acción 1]
-• [Acción 2]
-
-Siguientes pasos: [Instrucción corto plazo]
-Seguridad del paciente: [Advertencia de urgencia si aplica]
-
-Habla claro, empático y directo. Usa un tono médico profesional pero accesible.
-''';
+      final inicio = ahora.subtract(Duration(days: _ventana.dias));
+      final rangoFecha = '${inicio.day}/${inicio.month}/${inicio.year} a ${ahora.day}/${ahora.month}/${ahora.year}';
+      
+      // Generar prompt en formato EXACTO que espera el backend (igual que la web)
+      final prompt = _generarPromptResumido(enVentana, nombrePaciente, rangoFecha);
 
       final dio = ref.read(dioProvider);
       final llm = LlmRemote(dio);
