@@ -64,7 +64,8 @@ class PerfilScreen extends ConsumerWidget {
 
                     if (confirm == true) {
                       await ref.read(authRepoProvider).logout();
-                      if (context.mounted) context.go('/login');
+                      ref.invalidate(perfilProvider);
+                      if (context.mounted) context.go('/');
                     }
                   },
                   icon: const Icon(Icons.logout, color: Colors.red),
